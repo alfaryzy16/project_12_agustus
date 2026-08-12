@@ -1,0 +1,34 @@
+services:
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+
+    container_name: project12-php84
+
+    restart: unless-stopped
+
+    working_dir: /var/www/html
+
+    volumes:
+      - .:/var/www/html
+
+    ports:
+      - "8084:8000"
+
+    networks:
+      - project12
+      - mysql
+
+    command: >
+      sh -c "php artisan serve
+      --host=0.0.0.0
+      --port=8000"
+
+networks:
+  project12:
+    driver: bridge
+
+  mysql:
+    external: true
+    name: mysql_default
