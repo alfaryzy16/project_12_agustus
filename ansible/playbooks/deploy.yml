@@ -1,0 +1,228 @@
+---
+- name: Deploy Project 12 Laravel
+  hosts: production
+  become: true
+  gather_facts: false
+
+  vars:
+    project_dir: /var/www/html/project_12_agustus
+    project_repo: "git@github.com:alfaryzy16/project_12_agustus.git"
+
+    php_container: project12-php84
+    php_image: project12-php84
+    mysql_network: mysql-network
+
+  tasks:
+
+    # ==========================================
+    # 1. CHECK VPS
+    # ==========================================
+
+    - name: Check VPS connection
+      ansible.builtin.ping:
+
+    # ==========================================
+    # 2. ENSURE PROJECT PARENT DIRECTORY
+    # ==========================================
+
+    - name: Ensure project parent directory exists
+      ansible.builtin.file:
+        path: /var/www/html
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # ==========================================
+    # 3. CHECK PROJECT DIRECTORY
+    # ==========================================
+
+    - name: Check Project 12 directory
+      ansible.builtin.stat:
+        path: "{{ project_dir }}"
+      register: project_directory
+
+    # ==========================================
+    # 4. CLONE PROJECT FIRST DEPLOYMENT
+    # ==========================================
+
+    - name: Clone Project 12 repository
+      ansible.builtin.git:
+        repo: "{{ project_repo }}"
+        dest: "{{ project_dir }}"
+        version: main
+        accept_hostkey: true
+      when: not project_directory.stat.exists
+
+    # ==========================================
+    # 5. UPDATE EXISTING PROJECT
+    # ==========================================
+
+    - name: Fetch latest Project 12 source
+      ansible.builtin.command:
+        cmd: git fetch origin
+        chdir: "{{ project_dir }}"
+      when: project_directory.stat.exists
+
+    - name: Reset Project 12 to origin/main
+      ansible.builtin.command:
+        cmd: git reset --hard origin/main
+        chdir: "{{ project_dir }}"
+      when: project_directory.stat.exists
+
+    # ==========================================
+    # 6. CHECK MYSQL NETWORK
+    # ==========================================
+
+    - name: Check MySQL network
+      ansible.builtin.command:
+        cmd: docker network inspect {{ mysql_network }}
+      register: mysql_network_check
+      changed_when: false
+      failed_when: false
+
+    - name: Fail if MySQL network does not exist
+      ansible.builtin.fail:
+        msg: "Network {{ mysql_network }} tidak ditemukan."
+      when: mysql_network_check.rc != 0
+
+    # ==========================================
+    # 7. CREATE PRODUCTION ENV
+    # ==========================================
+
+    - name: Create Project 12 production environment
+      ansible.builtin.template:
+        src: ../templates/.env.production.j2
+        dest: "{{ project_dir }}/.env"
+        owner: root
+        group: root
+        mode: "0640"
+
+    # ==========================================
+    # 8. CHECK APP KEY
+    # ==========================================
+
+    - name: Check Laravel APP_KEY
+      ansible.builtin.shell:
+        cmd: "grep '^APP_KEY=' {{ project_dir }}/.env | cut -d= -f2-"
+      register: app_key_check
+      changed_when: false
+
+    - name: Generate Laravel APP_KEY
+      ansible.builtin.command:
+        cmd: docker run --rm -v {{ project_dir }}:/var/www/html {{ php_image }}:latest php artisan key:generate --force
+      when:
+        - app_key_check.stdout | trim == ""
+        - false
+
+    # ==========================================
+    # 9. BUILD PHP 8.4 IMAGE
+    # ==========================================
+
+    - name: Build Project 12 PHP 8.4 image
+      ansible.builtin.command:
+        cmd: >
+          docker build
+          -t {{ php_image }}:latest
+          -f docker/php/Dockerfile
+          .
+        chdir: "{{ project_dir }}"
+
+    # ==========================================
+    # 10. CHECK EXISTING PHP CONTAINER
+    # ==========================================
+
+    - name: Check Project 12 PHP container
+      ansible.builtin.command:
+        cmd: docker inspect {{ php_container }}
+      register: php_container_check
+      changed_when: false
+      failed_when: false
+
+    # ==========================================
+    # 11. REMOVE OLD CONTAINER
+    # ==========================================
+
+    - name: Remove existing Project 12 PHP container
+      ansible.builtin.command:
+        cmd: docker rm -f {{ php_container }}
+      when: php_container_check.rc == 0
+
+    # ==========================================
+    # 12. CREATE PHP 8.4 CONTAINER
+    # ==========================================
+
+    - name: Create Project 12 PHP 8.4 container
+      ansible.builtin.command:
+        cmd: >
+          docker run -d
+          --name {{ php_container }}
+          --restart unless-stopped
+          --network {{ mysql_network }}
+          -v {{ project_dir }}:/var/www/html
+          {{ php_image }}:latest
+
+    # ==========================================
+    # 13. CHECK PHP
+    # ==========================================
+
+    - name: Check PHP version
+      ansible.builtin.command:
+        cmd: docker exec {{ php_container }} php -v
+      register: php_version
+      changed_when: false
+
+    - name: Display PHP version
+      ansible.builtin.debug:
+        var: php_version.stdout_lines
+
+    # ==========================================
+    # 14. INSTALL COMPOSER
+    # ==========================================
+
+    - name: Install Composer dependencies
+      ansible.builtin.command:
+        cmd: >
+          docker exec
+          {{ php_container }}
+          composer install
+          --no-interaction
+          --prefer-dist
+          --optimize-autoloader
+        chdir: "{{ project_dir }}"
+
+    # ==========================================
+    # 15. LARAVEL CACHE
+    # ==========================================
+
+    - name: Clear Laravel configuration cache
+      ansible.builtin.command:
+        cmd: docker exec {{ php_container }} php artisan config:clear
+      changed_when: false
+
+    - name: Clear Laravel application cache
+      ansible.builtin.command:
+        cmd: docker exec {{ php_container }} php artisan cache:clear
+      changed_when: false
+
+    # ==========================================
+    # 16. DATABASE MIGRATION
+    # ==========================================
+
+    - name: Run Laravel migrations
+      ansible.builtin.command:
+        cmd: docker exec {{ php_container }} php artisan migrate --force
+
+    # ==========================================
+    # 17. FINAL CHECK
+    # ==========================================
+
+    - name: Check Laravel application
+      ansible.builtin.command:
+        cmd: docker exec {{ php_container }} php artisan about
+      register: laravel_about
+      changed_when: false
+
+    - name: Display Laravel status
+      ansible.builtin.debug:
+        msg: "Project 12 Laravel berhasil dijalankan dengan PHP 8.4."
