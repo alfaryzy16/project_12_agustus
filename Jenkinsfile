@@ -24,7 +24,6 @@ pipeline {
         stage('Deploy Project 12') {
             steps {
                 sshagent(credentials: ['vps-ssh-key']) {
-
                     withCredentials([
                         file(
                             credentialsId: 'ansible-vault-file',
@@ -35,12 +34,10 @@ pipeline {
                             variable: 'VAULT_PASSWORD'
                         )
                     ]) {
-
                         sh '''
+                            mkdir -p ansible/group_vars
                             cp "$VAULT_FILE" ansible/group_vars/vault.yml
-
-                            printf '%s' "$VAULT_PASSWORD" > .vault-password
-
+                            printf "%s" "$VAULT_PASSWORD" > .vault-password
                             chmod 600 ansible/group_vars/vault.yml
                             chmod 600 .vault-password
 
@@ -51,7 +48,7 @@ pipeline {
 
                             rm -f .vault-password
                             rm -f ansible/group_vars/vault.yml
-                        }
+                        '''
                     }
                 }
             }
