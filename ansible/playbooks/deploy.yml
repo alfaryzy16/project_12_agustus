@@ -7,16 +7,13 @@
   vars_files:
     - ../group_vars/vault.yml
 
-   vars:
+  vars:
     project_dir: /var/www/html/project_12_agustus
     project_repo: "git@github.com:alfaryzy16/project_12_agustus.git"
 
     php_container: project12-php84
     php_image: project12-php84
     mysql_network: mysql-network
-
-  vars_files:
-    - ../group_vars/vault.yml
 
   tasks:
 
