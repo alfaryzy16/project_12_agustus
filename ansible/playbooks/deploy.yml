@@ -4,13 +4,19 @@
   become: true
   gather_facts: false
 
-  vars:
+  vars_files:
+    - ../group_vars/vault.yml
+
+   vars:
     project_dir: /var/www/html/project_12_agustus
     project_repo: "git@github.com:alfaryzy16/project_12_agustus.git"
 
     php_container: project12-php84
     php_image: project12-php84
     mysql_network: mysql-network
+
+  vars_files:
+    - ../group_vars/vault.yml
 
   tasks:
 
@@ -87,7 +93,7 @@
       when: mysql_network_check.rc != 0
 
     # ==========================================
-    # 7. CREATE PRODUCTION ENV
+    # 7. CREATE PRODUCTION ENVIRONMENT
     # ==========================================
 
     - name: Create Project 12 production environment
@@ -99,24 +105,7 @@
         mode: "0640"
 
     # ==========================================
-    # 8. CHECK APP KEY
-    # ==========================================
-
-    - name: Check Laravel APP_KEY
-      ansible.builtin.shell:
-        cmd: "grep '^APP_KEY=' {{ project_dir }}/.env | cut -d= -f2-"
-      register: app_key_check
-      changed_when: false
-
-    - name: Generate Laravel APP_KEY
-      ansible.builtin.command:
-        cmd: docker run --rm -v {{ project_dir }}:/var/www/html {{ php_image }}:latest php artisan key:generate --force
-      when:
-        - app_key_check.stdout | trim == ""
-        - false
-
-    # ==========================================
-    # 9. BUILD PHP 8.4 IMAGE
+    # 8. BUILD PHP 8.4 IMAGE
     # ==========================================
 
     - name: Build Project 12 PHP 8.4 image
@@ -129,7 +118,7 @@
         chdir: "{{ project_dir }}"
 
     # ==========================================
-    # 10. CHECK EXISTING PHP CONTAINER
+    # 9. CHECK EXISTING PHP CONTAINER
     # ==========================================
 
     - name: Check Project 12 PHP container
@@ -140,7 +129,7 @@
       failed_when: false
 
     # ==========================================
-    # 11. REMOVE OLD CONTAINER
+    # 10. REMOVE OLD PHP CONTAINER
     # ==========================================
 
     - name: Remove existing Project 12 PHP container
@@ -149,7 +138,7 @@
       when: php_container_check.rc == 0
 
     # ==========================================
-    # 12. CREATE PHP 8.4 CONTAINER
+    # 11. CREATE PHP 8.4 CONTAINER
     # ==========================================
 
     - name: Create Project 12 PHP 8.4 container
@@ -159,11 +148,12 @@
           --name {{ php_container }}
           --restart unless-stopped
           --network {{ mysql_network }}
+          -p 127.0.0.1:9084:9000
           -v {{ project_dir }}:/var/www/html
           {{ php_image }}:latest
 
     # ==========================================
-    # 13. CHECK PHP
+    # 12. CHECK PHP VERSION
     # ==========================================
 
     - name: Check PHP version
@@ -177,7 +167,7 @@
         var: php_version.stdout_lines
 
     # ==========================================
-    # 14. INSTALL COMPOSER
+    # 13. INSTALL COMPOSER DEPENDENCIES
     # ==========================================
 
     - name: Install Composer dependencies
@@ -192,7 +182,7 @@
         chdir: "{{ project_dir }}"
 
     # ==========================================
-    # 15. LARAVEL CACHE
+    # 14. CLEAR LARAVEL CACHE
     # ==========================================
 
     - name: Clear Laravel configuration cache
@@ -206,7 +196,7 @@
       changed_when: false
 
     # ==========================================
-    # 16. DATABASE MIGRATION
+    # 15. RUN DATABASE MIGRATIONS
     # ==========================================
 
     - name: Run Laravel migrations
@@ -214,7 +204,7 @@
         cmd: docker exec {{ php_container }} php artisan migrate --force
 
     # ==========================================
-    # 17. FINAL CHECK
+    # 16. FINAL LARAVEL CHECK
     # ==========================================
 
     - name: Check Laravel application
